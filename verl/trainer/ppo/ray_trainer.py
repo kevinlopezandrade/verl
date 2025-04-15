@@ -604,9 +604,9 @@ class RayPPOTrainer(object):
         for metric_key, reduction_type in self.config.get("extra_metrics_to_log_val", {}).items():
             try:
                 if reduction_type == "mean":
-                    metrics[f"val/{metric_key}"] = np.mean(reward_extra_infos_dict[metric_key])
+                    metric_dict[f"val/{metric_key}"] = np.mean(reward_extra_infos_dict[metric_key])
                 elif reduction_type == "sum":
-                    metrics[f"val/{metric_key}"] = np.sum(reward_extra_infos_dict[metric_key])
+                    metric_dict[f"val/{metric_key}"] = np.sum(reward_extra_infos_dict[metric_key])
             except Exception:
                 continue
 
