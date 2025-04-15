@@ -508,6 +508,7 @@ class RayPPOTrainer(object):
     def _validate(self):
         reward_tensor_lst = []
         data_source_lst = []
+        reward_extra_infos_dict: dict[str, list] = defaultdict(list)
 
         # Lists to collect samples for the table
         sample_inputs = []
@@ -567,7 +568,12 @@ class RayPPOTrainer(object):
             test_batch = test_batch.union(test_output_gen_batch)
 
             # evaluate using reward_function
-            reward_tensor = self.val_reward_fn(test_batch)
+            result = self.val_reward_fn(test_batch, return_dict=True)
+            reward_tensor = result["reward_tensor"]
+
+            if "reward_extra_info" in result:
+                 for key, lst in result["reward_extra_info"].items():
+                     reward_extra_infos_dict[key].extend(lst)
 
             # Store scores
             scores = reward_tensor.sum(-1).cpu().tolist()
@@ -577,6 +583,9 @@ class RayPPOTrainer(object):
             data_source_lst.append(test_batch.non_tensor_batch.get('data_source', ['unknown'] * reward_tensor.shape[0]))
 
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
+
+        for key_info, lst in reward_extra_infos_dict.items():
+             assert len(lst) == 0 or len(lst) == len(sample_scores), f"{key_info}: {len(lst)=}, {len(sample_scores)=}"
 
         reward_tensor = torch.cat(reward_tensor_lst, dim=0).sum(-1).cpu()  # (batch_size,)
         data_sources = np.concatenate(data_source_lst, axis=0)
@@ -591,6 +600,15 @@ class RayPPOTrainer(object):
         metric_dict = {}
         for data_source, rewards in data_source_reward.items():
                 metric_dict[f'val/test_score/{data_source}'] = np.mean(rewards)
+
+        for metric_key, reduction_type in self.config.get("extra_metrics_to_log_val", {}).items():
+            try:
+                if reduction_type == "mean":
+                    metrics[f"val/{metric_key}"] = np.mean(reward_extra_infos_dict[metric_key])
+                elif reduction_type == "sum":
+                    metrics[f"val/{metric_key}"] = np.sum(reward_extra_infos_dict[metric_key])
+            except Exception:
+                continue
 
         return metric_dict
 
